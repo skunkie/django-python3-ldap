@@ -7,7 +7,7 @@ django-python3-ldap
 Features
 --------
 
-- Authenticate users with an LDAP server.
+- Authenticate users with one or more LDAP servers.
 - Sync LDAP users with a local Django database.
 - Supports custom Django user models.
 - Works in Python 2 and 3!
@@ -130,6 +130,87 @@ better than the defaults used by django-python3-ldap:
     }
 
     LDAP_AUTH_OBJECT_CLASS = "user"
+
+
+Authentication with two or more domains
+------------------------------------------
+
+Add to your ``settings.py``:
+
+.. code:: python
+
+    LDAP_AUTH_DOMAINS = {
+        "domain1.com": "DOMAIN1",
+        "domain2.com": "DOMAIN2"
+    }
+
+    LDAP_AUTH_CLEAN_USER_DATA = "django_python3_ldap.utils.clean_multidomain_user_data"
+
+    LDAP_AUTH_FORMAT_USERNAME = "django_python3_ldap.utils.format_username_active_directory_principal"
+
+    LDAP_AUTH_MULTIDOMAIN_URL = {
+        "domain1.com": "ldap://domain1.com:389",
+        "domain2.com": "ldap://domain2.com:389"
+    }
+
+    LDAP_AUTH_MULTIDOMAIN_SEARCH_BASE = {
+        "domain1.com": "ou=people,dc=domain1,dc=com",
+        "domain2.com": "ou=people,dc=domain2,dc=com"
+    }
+
+Add to your ``forms.py``:
+
+.. code:: python
+
+    from django import forms
+    from django.contrib.auth import authenticate
+    from django.contrib.auth.forms import AuthenticationForm
+    from django.conf import settings
+
+
+    class MultiDomainAuthenticationForm(AuthenticationForm):
+
+        domain = forms.ChoiceField(
+            choices=list((k, v)
+                        for k, v in settings.LDAP_AUTH_DOMAINS.items()),
+            required=True,
+            label=_('Domain')
+        )
+
+        def clean(self):
+            username = self.cleaned_data.get('username')
+            password = self.cleaned_data.get('password')
+            domain = self.cleaned_data.get('domain')
+
+            if None not in (username, domain) and password:
+                self.user_cache = authenticate(
+                    self.request,
+                    username=username,
+                    password=password,
+                    domain=domain
+                )
+                if self.user_cache is None:
+                    raise self.get_invalid_login_error()
+                else:
+                    self.confirm_login_allowed(self.user_cache)
+
+            return self.cleaned_data
+
+Add to your ``urls.py``:
+
+.. code:: python
+
+    from django.contrib.auth.views import LoginView
+
+    from .forms import MultiDomainAuthenticationForm
+
+
+    urlpatterns = [
+        path("login/", LoginView.as_view(
+            authentication_form=MultiDomainAuthenticationForm,
+            template_name="path/to/login.html"), name="login")
+        ...
+    ]
 
 
 Can't get authentication to work?

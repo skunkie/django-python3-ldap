@@ -38,6 +38,11 @@ class LazySettings(object):
         default="ldap://localhost:389",
     )
 
+    LDAP_AUTH_MULTIDOMAIN_URL = LazySetting(
+        name="LDAP_AUTH_MULTIDOMAIN_URL",
+        default={"domain.local": "ldap://localhost:389"},
+    )
+
     LDAP_AUTH_USE_TLS = LazySetting(
         name="LDAP_AUTH_USE_TLS",
         default=False,
@@ -46,6 +51,11 @@ class LazySettings(object):
     LDAP_AUTH_SEARCH_BASE = LazySetting(
         name="LDAP_AUTH_SEARCH_BASE",
         default="ou=people,dc=example,dc=com",
+    )
+
+    LDAP_AUTH_MULTIDOMAIN_SEARCH_BASE = LazySetting(
+        name="LDAP_AUTH_MULTIDOMAIN_SEARCH_BASE",
+        default={"domain.local": "ou=people,dc=example,dc=com"},
     )
 
     LDAP_AUTH_OBJECT_CLASS = LazySetting(

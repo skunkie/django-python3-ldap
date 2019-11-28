@@ -29,7 +29,7 @@ class Connection(object):
         """
         self._connection = connection
 
-    def _get_or_create_user(self, user_data):
+    def _get_or_create_user(self, user_data, domain=None):
         """
         Returns a Django user for the given LDAP user data.
 
@@ -54,7 +54,13 @@ class Connection(object):
             in settings.LDAP_AUTH_USER_FIELDS.items()
             if attribute_name in attributes
         }
-        user_fields = import_func(settings.LDAP_AUTH_CLEAN_USER_DATA)(user_fields)
+        kwargs = {}
+        if domain is not None:
+            kwargs.update({
+                "domain": domain
+            })
+        user_fields = import_func(
+            settings.LDAP_AUTH_CLEAN_USER_DATA)(user_fields, **kwargs)
         # Create the user lookup.
         user_lookup = {
             field_name: user_fields.pop(field_name, "")
@@ -104,15 +110,23 @@ class Connection(object):
         in settings.LDAP_AUTH_USER_LOOKUP_FIELDS.
         """
         # Search the LDAP database.
+        domain = kwargs.pop("domain", None)
+        if domain is not None:
+            search_base = settings.LDAP_AUTH_MULTIDOMAIN_SEARCH_BASE.get(domain)
+        else:
+            search_base = settings.LDAP_AUTH_SEARCH_BASE
         if self._connection.search(
-            search_base=settings.LDAP_AUTH_SEARCH_BASE,
+            search_base=search_base,
             search_filter=format_search_filter(kwargs),
             search_scope=ldap3.SUBTREE,
             attributes=ldap3.ALL_ATTRIBUTES,
             get_operational_attributes=True,
             size_limit=1,
         ):
-            return self._get_or_create_user(self._connection.response[0])
+            return self._get_or_create_user(
+                self._connection.response[0],
+                domain=domain
+            )
         logger.warning("LDAP user lookup failed")
         return None
 
@@ -135,8 +149,10 @@ def connection(**kwargs):
     }
     username = None
     password = None
+    domain = None
     if kwargs:
         password = kwargs.pop("password")
+        domain = kwargs.get("domain")
         username = format_username(kwargs)
     # Configure the connection.
     if settings.LDAP_AUTH_USE_TLS:
@@ -144,10 +160,14 @@ def connection(**kwargs):
     else:
         auto_bind = ldap3.AUTO_BIND_NO_TLS
     # Connect.
+    if domain is not None:
+        auth_url = settings.LDAP_AUTH_MULTIDOMAIN_URL.get(domain)
+    else:
+        auth_url = settings.LDAP_AUTH_URL
     try:
         c = ldap3.Connection(
             ldap3.Server(
-                settings.LDAP_AUTH_URL,
+                auth_url,
                 allowed_referral_hosts=[("*", True)],
                 get_info=ldap3.NONE,
                 connect_timeout=settings.LDAP_AUTH_CONNECT_TIMEOUT,
@@ -198,7 +218,8 @@ def authenticate(*args, **kwargs):
     """
     password = kwargs.pop("password")
     # Check that this is valid login data.
-    if not password or frozenset(kwargs.keys()) != frozenset(settings.LDAP_AUTH_USER_LOOKUP_FIELDS):
+    if not password or frozenset(kwargs.keys() - {"domain"}) != \
+        frozenset(settings.LDAP_AUTH_USER_LOOKUP_FIELDS):
         return None
     # Connect to LDAP.
     with connection(password=password, **kwargs) as c:

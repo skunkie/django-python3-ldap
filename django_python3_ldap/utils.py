@@ -62,6 +62,16 @@ def clean_user_data(model_fields):
     return model_fields
 
 
+def clean_multidomain_user_data(model_fields, domain):
+    """
+    Creates a user in the User Principal Name format, e.g.:
+    john_smith@domain.local
+    """
+    model_fields["username"] = "%s@%s" % (
+        model_fields.get("username"), domain)
+    return model_fields
+
+
 def format_username_openldap(model_fields):
     """
     Formats a user identifier into a username suitable for
@@ -100,10 +110,12 @@ def format_username_active_directory_principal(model_fields):
     binding to an Active Directory server.
     """
     username = model_fields["username"]
-    if settings.LDAP_AUTH_ACTIVE_DIRECTORY_DOMAIN:
+    domain = domain = model_fields.get("domain") or \
+        settings.LDAP_AUTH_ACTIVE_DIRECTORY_DOMAIN
+    if domain:
         username = "{username}@{domain}".format(
             username=username,
-            domain=settings.LDAP_AUTH_ACTIVE_DIRECTORY_DOMAIN,
+            domain=domain,
         )
     return username
 
